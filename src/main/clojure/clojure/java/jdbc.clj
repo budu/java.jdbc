@@ -24,7 +24,7 @@
     :see-also [["http://github.com/clojure/java.jdbc/blob/master/src/test/clojure/clojure/java/test_jdbc.clj"
                 "Example code"]]}
    clojure.java.jdbc
-  (:use clojure.java.jdbc.internal))
+  (:refer clojure.java.jdbc.internal))
 
 (def find-connection find-connection*)
 (def connection connection*)
@@ -78,6 +78,13 @@
   []
   (rollback))
 
+(defmacro with-stropping
+  "Evaluates body so that the as-identifier function will output stropped
+  identifiers. The chars argument can be a char, a string or a vector
+  containing the starting and ending char or string to be used."
+  [chars escape-fn & body]
+  `(with-stropping* ~chars ~escape-fn (fn [] ~@body)))
+
 (defn do-commands
   "Executes SQL commands on the open database connection."
   [& commands]
@@ -100,6 +107,12 @@
     (name x)
     (str x)))
 
+(defn as-identifier
+  "Returns a SQL identifier from the given keywords. When used inside a
+  with-stropping call, the returned identifiers will be stropped."
+  [& keywords]
+  (as-identifier* keywords))
+
 (defn create-table
   "Creates a table on the open database connection given a table name and
   specs. Each spec is either a column spec: a vector containing a column
@@ -109,19 +122,21 @@
   [name & specs]
   (do-commands
     (format "CREATE TABLE %s (%s)"
-            (as-str name)
-            (apply str
-                   (map as-str
-                        (apply concat
-                               (interpose [", "]
-                                          (map (partial interpose " ") specs))))))))
+            (as-identifier* name)
+            (->> specs
+                 (map (fn [[column-name & spec]]
+                        (interpose " " (conj (map as-str spec)
+                                             (as-identifier* column-name)))))
+                 (interpose ", ")
+                 flatten
+                 (apply str)))))
 
 (defn drop-table
   "Drops a table on the open database connection given its name, a string
   or keyword"
   [name]
   (do-commands
-    (format "DROP TABLE %s" (as-str name))))
+    (format "DROP TABLE %s" (as-identifier* name))))
 
 (defn insert-values
   "Inserts rows into a table with values for specified columns only.
@@ -131,7 +146,7 @@
   insert-rows instead.
   If a single set of values is inserted, returns a map of the generated keys."
   [table column-names & value-groups]
-  (let [column-strs (map as-str column-names)
+  (let [column-strs (map as-identifier* column-names)
         n (count (first value-groups))
         return-keys (= 1 (count value-groups))
         template (apply str (interpose "," (replicate n "?")))
@@ -141,7 +156,7 @@
     (apply do-prepared*
            return-keys
            (format "INSERT INTO %s %s VALUES (%s)"
-                   (as-str table) columns template)
+                   (as-identifier* table) columns template)
            value-groups)))
 
 (defn insert-rows
@@ -176,7 +191,7 @@
     (do-prepared*
       false
       (format "DELETE FROM %s WHERE %s"
-              (as-str table) where)
+              (as-identifier* table) where)
       params)))
 
 (defn update-values
@@ -186,12 +201,12 @@
   strings or keywords (identifying columns) to updated values."
   [table where-params record]
   (let [[where & params] where-params
-        column-strs (map as-str (keys record))
+        column-strs (map as-identifier* (keys record))
         columns (apply str (concat (interpose "=?, " column-strs) "=?"))]
     (do-prepared*
       false
       (format "UPDATE %s SET %s WHERE %s"
-              (as-str table) columns where)
+              (as-identifier* table) columns where)
       (concat (vals record) params))))
 
 (defn update-or-insert-values

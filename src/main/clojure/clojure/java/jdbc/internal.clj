@@ -24,6 +24,10 @@
 
 (def ^:dynamic *db* {:connection nil :level 0})
 
+(def ^:dynamic *stropping-fn* identity)
+
+(def ^:dynamic *stropping-escape-fn* identity)
+
 (def special-counts
   {Statement/EXECUTE_FAILED "EXECUTE_FAILED"
    Statement/SUCCESS_NO_INFO "SUCCESS_NO_INFO"})
@@ -192,6 +196,17 @@
               (.setAutoCommit con auto-commit)))))
       (func))))
 
+(defn with-stropping*
+  "Evaluates func so that the as-identifer function will output stropped
+  identifiers."
+  [chars escape-fn func]
+  (let [chars (if (vector? chars)
+                chars
+                [chars chars])]
+    (binding [*stropping-fn* #(str (first chars) % (second chars))
+              *stropping-escape-fn* escape-fn]
+      (func))))
+
 (defn do-prepared*
   "Executes an (optionally parameterized) SQL prepared statement on the
   open database connection. Each param-group is a seq of values for all of
@@ -231,3 +246,19 @@
         params))
     (with-open [rset (.executeQuery stmt)]
       (func (resultset-seq rset)))))
+
+(defn as-identifier*
+  "Returns a qualified SQL identifier built from a single or a sequence
+  of keywords. When used inside a with-stropping call, the returned
+  identifiers will be stropped."
+  [keywords]
+  (let [keywords (if (keyword? keywords)
+                   [keywords]
+                   keywords)
+        ->identifier (comp *stropping-fn*
+                           *stropping-escape-fn*
+                           as-str)]
+    (->> keywords
+         (map ->identifier)
+         (interpose \.)
+         (apply str))))
