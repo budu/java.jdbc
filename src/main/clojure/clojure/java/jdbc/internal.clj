@@ -28,6 +28,9 @@
 
 (def ^:dynamic *stropping-escape-fn* identity)
 
+(def ^:dynamic *inbound-naming-strategy-fn* identity)
+(def ^:dynamic *outbound-naming-strategy-fn* identity)
+
 (def special-counts
   {Statement/EXECUTE_FAILED "EXECUTE_FAILED"
    Statement/SUCCESS_NO_INFO "SUCCESS_NO_INFO"})
@@ -207,6 +210,14 @@
               *stropping-escape-fn* escape-fn]
       (func))))
 
+(defn with-naming-strategy*
+  "Evaluates func so that the given inbound and outbound naming
+  strategies are applied to identifiers."
+  [inbound-fn outbound-fn func]
+  (binding [*inbound-naming-strategy-fn* inbound-fn
+            *outbound-naming-strategy-fn* outbound-fn]
+    (func)))
+
 (defn do-prepared*
   "Executes an (optionally parameterized) SQL prepared statement on the
   open database connection. Each param-group is a seq of values for all of
@@ -249,14 +260,16 @@
 
 (defn as-identifier*
   "Returns a qualified SQL identifier built from a single or a sequence
-  of keywords. When used inside a with-stropping call, the returned
-  identifiers will be stropped."
+  of keywords. When used with a naming strategy, apply the inbound
+  strategy to the given identifier When used inside a with-stropping
+  call, the returned identifiers will be stropped."
   [keywords]
   (let [keywords (if (keyword? keywords)
                    [keywords]
                    keywords)
         ->identifier (comp *stropping-fn*
                            *stropping-escape-fn*
+                           *inbound-naming-strategy-fn*
                            as-str)]
     (->> keywords
          (map ->identifier)

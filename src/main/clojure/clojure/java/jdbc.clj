@@ -85,6 +85,12 @@
   [chars escape-fn & body]
   `(with-stropping* ~chars ~escape-fn (fn [] ~@body)))
 
+(defmacro with-naming-strategy
+  "Evaluates body so that the given inbound and outbound naming
+  strategies are applied to identifiers."
+  [inbound-fn outbound-fn & body]
+  `(with-naming-strategy* ~inbound-fn ~outbound-fn (fn [] ~@body)))
+
 (defn do-commands
   "Executes SQL commands on the open database connection."
   [& commands]
@@ -108,8 +114,10 @@
     (str x)))
 
 (defn as-identifier
-  "Returns a SQL identifier from the given keywords. When used inside a
-  with-stropping call, the returned identifiers will be stropped."
+  "Returns a qualified SQL identifier from given keywords. When used
+  with a naming strategy, apply the inbound strategy to the given
+  identifier When used inside a with-stropping call, the returned
+  identifiers will be stropped."
   [& keywords]
   (as-identifier* keywords))
 
