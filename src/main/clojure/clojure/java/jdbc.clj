@@ -24,6 +24,7 @@
     :see-also [["http://github.com/clojure/java.jdbc/blob/master/src/test/clojure/clojure/java/test_jdbc.clj"
                 "Example code"]]}
    clojure.java.jdbc
+  (:refer-clojure :exclude [resultset-seq])
   (:refer clojure.java.jdbc.internal))
 
 (def find-connection find-connection*)
@@ -116,7 +117,7 @@
 (defn as-identifier
   "Returns a qualified SQL identifier from given keywords. When used
   with a naming strategy, apply the inbound strategy to the given
-  identifier When used inside a with-stropping call, the returned
+  identifier. When used inside a with-stropping call, the returned
   identifiers will be stropped."
   [& keywords]
   (as-identifier* keywords))

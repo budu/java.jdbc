@@ -15,6 +15,7 @@
 ;;  Migrated from clojure.contrib.sql.internal 17 April 2011
 
 (ns clojure.java.jdbc.internal
+  (:refer-clojure :exclude [resultset-seq])
   (:import
     (clojure.lang RT)
     (java.sql BatchUpdateException DriverManager SQLException Statement)
@@ -29,7 +30,7 @@
 (def ^:dynamic *stropping-escape-fn* identity)
 
 (def ^:dynamic *inbound-naming-strategy-fn* identity)
-(def ^:dynamic *outbound-naming-strategy-fn* identity)
+(def ^:dynamic *outbound-naming-strategy-fn* #(.toLowerCase ^String %))
 
 (def special-counts
   {Statement/EXECUTE_FAILED "EXECUTE_FAILED"
@@ -218,6 +219,25 @@
             *outbound-naming-strategy-fn* outbound-fn]
     (func)))
 
+(defn resultset-seq
+  "Creates and returns a lazy sequence of structmaps corresponding to
+  the rows in the java.sql.ResultSet rs. When used with a naming
+  strategy, apply the outbound strategy to the resulting identifiers."
+  [^java.sql.ResultSet rs]
+    (let [rsmeta (. rs (getMetaData))
+          idxs (range 1 (inc (. rsmeta (getColumnCount))))
+          keys (map (comp keyword *outbound-naming-strategy-fn*)
+                    (map (fn [i] (. rsmeta (getColumnLabel i))) idxs))
+          check-keys
+                (or (apply distinct? keys)
+                    (throw (Exception. "ResultSet must have unique column labels")))
+          row-struct (apply create-struct keys)
+          row-values (fn [] (map (fn [^Integer i] (. rs (getObject i))) idxs))
+          rows (fn thisfn []
+                 (when (. rs (next))
+                   (cons (apply struct row-struct (row-values)) (lazy-seq (thisfn)))))]
+      (rows)))
+
 (defn do-prepared*
   "Executes an (optionally parameterized) SQL prepared statement on the
   open database connection. Each param-group is a seq of values for all of
@@ -261,7 +281,7 @@
 (defn as-identifier*
   "Returns a qualified SQL identifier built from a single or a sequence
   of keywords. When used with a naming strategy, apply the inbound
-  strategy to the given identifier When used inside a with-stropping
+  strategy to the given identifier. When used inside a with-stropping
   call, the returned identifiers will be stropped."
   [keywords]
   (let [keywords (if (keyword? keywords)
